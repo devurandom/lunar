@@ -14,11 +14,11 @@ extern "C" {
 
 #define LUNAR_DECLARE(class) \
 	static const char className[]; \
-	static const LunarType<class>::Reg methods[]
+	static const typename LunarType<class>::Reg methods[]
 
 #define LUNAR_DEFINE(class) \
 	const char class::className[] = #class; \
-	const LunarType<class>::Reg class::methods[] =
+	const typename LunarType<class>::Reg class::methods[] =
 
 template <typename T>
 struct LunarType {

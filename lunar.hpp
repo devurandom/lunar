@@ -102,7 +102,7 @@ public:
 		lua_pushcfunction(L, gc_T);                         // [-0,+1,-]
 		rawsetfield(L, metatable, "__gc");                  // [-1,+0,e]
 
-		lua_newtable(L); // $mt (metatable of Class)                  // [-0,+1,e]
+		lua_newtable(L); // $mt (metatable of method table)           // [-0,+1,e]
 		lua_pushvalue(L, methods);                                    // [-0,+1,-]
 		lua_pushcclosure(L, new_T, 1);                                // [-1,+1,e]
 		lua_pushvalue(L, -1); // dup new_T function                   // [-0,+1,-]
@@ -123,7 +123,7 @@ public:
 			}
 		}
 
-		lua_pop(L, 2);  // drop metatable and method table
+		lua_settop(L, module); // drop locals
 	}
 
 	// call named lua method from userdata method table
@@ -283,7 +283,7 @@ private:
 		lua_getmetatable(L, instance);                      // [-0,+1,-]
 		int class_metatable = lua_gettop(L);
 
-		lua_pushstring(L, "__index");                       // [-0,+1,e]
+		lua_pushliteral(L, "__index");                      // [-0,+1,e]
 		lua_rawget(L, class_metatable);                     // [-1,+1,-]
 		int class_methods = lua_gettop(L);
 
@@ -326,7 +326,6 @@ private:
 		lua_pushcfunction(L, gc_T);                         // [-0,+1,-]
 		rawsetfield(L, instance_metatable, "__gc");         // [-1,+0,e]
 
-		lua_pushvalue(L, instance_metatable);               // [-0,+1,-]
 		lua_setmetatable(L, instance);                      // [-1,+0,-]
 
 

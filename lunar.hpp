@@ -220,6 +220,8 @@ public:
 private:
 	Lunar();  // hide default constructor
 
+/* FIXME HUGE HACK!!! */
+public:
 	// member function dispatcher
 	static int thunk(lua_State *L) {
 		// stack has userdata, followed by method args
@@ -299,7 +301,14 @@ private:
 		lua_newtable(L);                                    // [-0,+1,e]
 		int instance_methods_metatable = lua_gettop(L);
 
-		lua_pushvalue(L, class_methods);                    // [-0,+1,-]
+		/* FIXME: HUGE HACK!!! */
+		if (lua_type(L, class_methods) == LUA_TFUNCTION) {
+			lua_pushliteral(L, "__metatable");
+			lua_rawget(L, class_metatable);
+		}
+		else {
+			lua_pushvalue(L, class_methods);                    // [-0,+1,-]
+		}
 		rawsetfield(L, instance_methods_metatable, "__index");// [-1,+0,e]
 
 		lua_setmetatable(L, instance_methods);              // [-1,+0,-]
@@ -319,14 +328,21 @@ private:
 		lua_pushvalue(L, class_metatable);                  // [-0,+1,-]
 		rawsetfield(L, instance_metatable, LUAX_STR_CLASS); // [-1,+0,e]
 
-		lua_pushvalue(L, instance_methods);                 // [-0,+1,-]
-		rawsetfield(L, instance_metatable, "__index");      // [-1,+0,e]
+		/* FIXME: HUGE HACK!!! */
+		if (lua_type(L, class_methods) == LUA_TFUNCTION) {
+			lua_pushvalue(L, instance_methods);                 // [-0,+1,-]
+			rawsetfield(L, instance_metatable, "__metatable");     // [-1,+0,e]
+
+			lua_pushvalue(L, class_methods);                 // [-0,+1,-]
+			rawsetfield(L, instance_metatable, "__index");      // [-1,+0,e]
+		}
+		else {
+			lua_pushvalue(L, instance_methods);                 // [-0,+1,-]
+			rawsetfield(L, instance_metatable, "__index");      // [-1,+0,e]
+		}
 
 		lua_pushvalue(L, instance_methods);                 // [-0,+1,-]
 		rawsetfield(L, instance_metatable, "__newindex");   // [-1,+0,e]
-
-		lua_pushvalue(L, instance);                         // [-0,+1,-]
-		rawsetfield(L, instance_metatable, "__metatable");  // [-1,+0,e]
 
 		lua_setmetatable(L, instance);                      // [-1,+0,-]
 

@@ -308,6 +308,14 @@ private:
 		lua_newtable(L);                                    // [-0,+1,e]
 		int instance_metatable = lua_gettop(L);
 
+		/* clone class metatable to preserve __add behaviour and similar */
+		lua_pushnil(L);                                     // [-0,+1,e]
+		while (lua_next(L, class_metatable) != 0) {         // [-1,+(2|0),e]
+			lua_pushvalue(L, -2);                             // [-0,+1,-]
+			lua_insert(L, -2);                                // [-1,+1,-]
+			lua_rawset(L, instance_metatable);                // [-2,+0,e]
+		}
+
 		lua_pushvalue(L, class_metatable);                  // [-0,+1,-]
 		rawsetfield(L, instance_metatable, LUAX_STR_CLASS); // [-1,+0,e]
 
@@ -319,12 +327,6 @@ private:
 
 		lua_pushvalue(L, instance);                         // [-0,+1,-]
 		rawsetfield(L, instance_metatable, "__metatable");  // [-1,+0,e]
-
-		lua_pushcfunction(L, tostring_T);                   // [-0,+1,-]
-		rawsetfield(L, instance_metatable, "__tostring");   // [-1,+0,e]
-
-		lua_pushcfunction(L, gc_T);                         // [-0,+1,-]
-		rawsetfield(L, instance_metatable, "__gc");         // [-1,+0,e]
 
 		lua_setmetatable(L, instance);                      // [-1,+0,-]
 

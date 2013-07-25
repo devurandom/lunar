@@ -178,9 +178,8 @@ public:
 
 		// FIXME Why dont we use light/full userdata here? For non-gc instances let Lua allocate and then call placement new on it! Otherwise call plain new and create a light userdata!
 
-		T **ud = static_cast<T**>(pushuserdata(L, obj, sizeof(T*))); // mt.userdata[obj] = ud
+		T **ud = pushuserdata(L, obj); // mt.userdata[obj] = ud
 		if (ud != nullptr) {
-			*ud = obj;  // store pointer to object in userdata
 			lua_pushvalue(L, mt);
 			lua_setmetatable(L, -2); // ud.__metatable = mt
 
@@ -199,7 +198,7 @@ public:
 		lua_replace(L, mt);
 		lua_settop(L, mt);
 
-		return mt;  // index of userdata containing pointer to T object
+		return 1;  // index of userdata containing pointer to T object
 	}
 
 	// get userdata from Lua stack and return pointer to T object
@@ -273,6 +272,7 @@ public:
 		T *obj = *static_cast<T**>(lua_touserdata(L, 1));
 		if (obj) {
 			LunarWrapper::exit(obj, L);
+			// FIXME: Weird, sometimes we try to delete a pointer to somewhere *inside* the T object here...
 			delete obj;  // call destructor for T objects
 		}
 		return 0;
@@ -390,17 +390,18 @@ public:
 		}
 	} // leaves table on stack
 
-	static void *pushuserdata(lua_State *L, void *key, size_t sz) {
-		void *ud = nullptr;
-		lua_pushlightuserdata(L, key);
-		lua_gettable(L, -2);     // table[key]
+	static T** pushuserdata(lua_State *L, T *obj) {
+		T **ud = nullptr;
+		lua_pushlightuserdata(L, obj);
+		lua_gettable(L, -2);     // table[obj]
 		if (lua_isnil(L, -1)) {
 			lua_pop(L, 1);         // drop nil
 			lua_checkstack(L, 3);
-			ud = lua_newuserdata(L, sz);  // create new userdata
-			lua_pushlightuserdata(L, key);
+			ud = static_cast<T**>(lua_newuserdata(L, sizeof(T**)));  // create new userdata
+			*ud = obj;  // store pointer to object in userdata
+			lua_pushlightuserdata(L, obj);
 			lua_pushvalue(L, -2);  // dup ud
-			lua_settable(L, -4);   // table[key] = ud
+			lua_settable(L, -4);   // table[obj] = ud
 		}
 		return ud;
 	}

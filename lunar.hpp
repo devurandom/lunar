@@ -164,7 +164,6 @@ public:
 	// push onto the Lua stack a userdata containing a pointer to T object
 	static int push(lua_State *L, T *obj, bool gc = false) {
 		if (obj == nullptr) {
-			lua_pushnil(L);
 			return 0;
 		}
 

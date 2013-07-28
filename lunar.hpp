@@ -31,6 +31,22 @@ struct LunarType {
 
 struct LunarWrapper {
 	template <typename T>
+	static auto prep_imp(T *o, lua_State *L, int)
+		-> decltype(o->prep(L), int()) {
+		return o->prep(L);
+	}
+
+	template <typename T>
+	static int prep_imp(T *o, lua_State *L, long) {
+		return 0;
+	}
+
+	template <typename T>
+	static int prep(T *o, lua_State *L) {
+		return prep_imp(o, L, 0);
+	}
+
+	template <typename T>
 	static auto init_imp(T *o, lua_State *L, int)
 		-> decltype(o->init(L), int()) {
 		return o->init(L);
@@ -167,37 +183,46 @@ public:
 			return 0;
 		}
 
-		luaL_getmetatable(L, T::className);  // lookup metatable in Lua registry
+		T **ud = static_cast<T**>(lua_newuserdata(L, sizeof(T*))); // [-0,+1,e]
+		if (ud == nullptr) {
+			return luaL_error(L, "Failed to allocate '%s'", T::className);
+		}
+
+		*ud = obj;
+		int l_ud = lua_gettop(L);
+
+		luaL_getmetatable(L, T::className); // [-0,+1,-]
 		if (lua_isnil(L, -1)) {
-			luaL_error(L, "'%s' missing metatable", T::className);
+			return luaL_error(L, "'%s' missing metatable", T::className);
 		}
 
-		int mt = lua_gettop(L);
-		subtable(L, mt, "userdata", "v"); // mt.userdata = {}
+		lua_pushvalue(L, -1); // dup(mt)
+		lua_setmetatable(L, l_ud); // mt(ud)=mt [-1,+0,-]
 
-		// FIXME Why dont we use light/full userdata here? For non-gc instances let Lua allocate and then call placement new on it! Otherwise call plain new and create a light userdata!
+		if (!gc) {
+			subtable(L, -1, "do not trash", "k");
+			lua_pushvalue(L, l_ud);
+			lua_pushboolean(L, true);
+			lua_rawset(L, -3);
+		}
 
-		T **ud = pushuserdata(L, obj); // mt.userdata[obj] = ud
-		if (ud != nullptr) {
-			lua_pushvalue(L, mt);
-			lua_setmetatable(L, -2); // ud.__metatable = mt
+		lua_settop(L, l_ud);
 
-			if (gc == false) {
-				lua_checkstack(L, 3);
-				subtable(L, mt, "do not trash", "k"); // mt.do_not_trash = {}
-				lua_pushvalue(L, -2); // dup ud
-				lua_pushboolean(L, true);
-				lua_settable(L, -3); // mt.do_not_trash[ud] = true
-				lua_pop(L, 1); // pop(ud)
+		int nresult = LunarWrapper::prep(obj, L);
+		if (nresult != 0) {
+			const char *msg = nullptr;
+			int err = lua_gettop(L);
+			if (err >= 0) {
+				msg = lua_tostring(L, err);
 			}
+			if (msg == nullptr) {
+				msg = "(unknown error)";
+			}
+
+			return luaL_error(L, "'%s' failed to prepare: %s", T::className, msg);
 		}
 
-		// top = ud
-
-		lua_replace(L, mt);
-		lua_settop(L, mt);
-
-		return 1;  // index of userdata containing pointer to T object
+		return 1;
 	}
 
 	// get userdata from Lua stack and return pointer to T object
@@ -242,7 +267,7 @@ public:
 
 		T *obj = new T(L);  // call constructor for T objects
 
-		push(L, obj);
+		push(L, obj, true);
 		lua_insert(L, 1); // Push self below arguments for call to init()
 
 		int nresult = LunarWrapper::init(obj, L);
@@ -259,7 +284,7 @@ public:
 			return luaL_error(L, "'%s' failed to initialise: %s", T::className, msg);
 		}
 
-		push(L, obj, true); // gc_T will delete this object
+		lua_settop(L, 1);
 
 		return 1;           // userdata containing pointer to T object
 	}
@@ -360,7 +385,6 @@ public:
 
 		lua_setmetatable(L, instance);                      // [-1,+0,-]
 
-
 		return 0;
 	}
 
@@ -405,22 +429,6 @@ public:
 			rawsetfield(L, abs_tindex, name); // t[name] = table   // [-1,+0,e]
 		}
 	} // leaves table on stack
-
-	static T** pushuserdata(lua_State *L, T *obj) {
-		T **ud = nullptr;
-		lua_pushlightuserdata(L, obj);
-		lua_gettable(L, -2);     // table[obj]
-		if (lua_isnil(L, -1)) {
-			lua_pop(L, 1);         // drop nil
-			lua_checkstack(L, 3);
-			ud = static_cast<T**>(lua_newuserdata(L, sizeof(T**)));  // create new userdata
-			*ud = obj;  // store pointer to object in userdata
-			lua_pushlightuserdata(L, obj);
-			lua_pushvalue(L, -2);  // dup ud
-			lua_settable(L, -4);   // table[obj] = ud
-		}
-		return ud;
-	}
 };
 
 #endif

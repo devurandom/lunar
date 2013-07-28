@@ -1,0 +1,6 @@
+There are a few special functions in Lunar wrapped classes:
+ * T(L) - code that needs just the C object
+ * prep() - code that needs the Lua object being constructed, and shall be done for objects coming from C as well as those being created in Lua directly
+ * init() - code that needs to be done for initialisation and might cause errors and hence cannot be done in the constructor, only executed for Lua-created objects
+ * exit() - code that will be executed during destruction, but needs the Lua state (which is not accessible in the destructor)
+ * ~T() - code that needs just the C object

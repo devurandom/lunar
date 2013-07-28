@@ -139,6 +139,8 @@ public:
 			}
 		}
 
+		subtable(L, metatable, "userdata", "v"); // mt.userdata = {}
+
 		lua_settop(L, module); // drop locals
 	}
 
@@ -183,30 +185,29 @@ public:
 			return 0;
 		}
 
-		T **ud = static_cast<T**>(lua_newuserdata(L, sizeof(T*))); // [-0,+1,e]
-		if (ud == nullptr) {
-			return luaL_error(L, "Failed to allocate '%s'", T::className);
-		}
-
-		*ud = obj;
-		int l_ud = lua_gettop(L);
-
 		luaL_getmetatable(L, T::className); // [-0,+1,-]
 		if (lua_isnil(L, -1)) {
 			return luaL_error(L, "'%s' missing metatable", T::className);
 		}
+		int l_mt = lua_gettop(L);
 
-		lua_pushvalue(L, -1); // dup(mt)
+		if (!pushuserdata(L, obj)) {
+			return 1;
+		}
+		int l_ud = lua_gettop(L);
+
+		lua_pushvalue(L, l_mt); // dup(mt)
 		lua_setmetatable(L, l_ud); // mt(ud)=mt [-1,+0,-]
 
 		if (!gc) {
-			subtable(L, -1, "do not trash", "k");
+			subtable(L, l_mt, "do not trash", "k");
 			lua_pushvalue(L, l_ud);
 			lua_pushboolean(L, true);
 			lua_rawset(L, -3);
 		}
 
 		lua_settop(L, l_ud);
+		lua_replace(L, l_mt);
 
 		int nresult = LunarWrapper::prep(obj, L);
 		if (nresult != 0) {
@@ -429,6 +430,31 @@ public:
 			rawsetfield(L, abs_tindex, name); // t[name] = table   // [-1,+0,e]
 		}
 	} // leaves table on stack
+
+	static bool pushuserdata(lua_State *L, T *obj) {
+		lua_pushlightuserdata(L, obj);
+		lua_gettable(L, -2);     // table[obj]
+		if (lua_isnil(L, -1)) {
+			lua_pop(L, 1);         // drop nil
+			lua_checkstack(L, 3);
+
+			T **ud = static_cast<T**>(lua_newuserdata(L, sizeof(T*)));  // create new userdata
+			if (ud == nullptr) {
+				return luaL_error(L, "Failed to allocate '%s'", T::className);
+			}
+
+			*ud = obj;  // store pointer to object in userdata
+
+			lua_pushlightuserdata(L, obj);
+			lua_pushvalue(L, -2);  // dup ud
+			lua_settable(L, -4);   // table[obj] = ud
+
+			return true;
+		}
+
+		return false;
+	}
+
 };
 
 #endif

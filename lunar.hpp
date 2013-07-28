@@ -148,8 +148,8 @@ public:
 		int status = lua_pcall(L, 1+nargs, nresults, errfunc);  // call method
 		if (status != LUA_OK) {
 			const char *msg = lua_tostring(L, -1);
-			if (msg == NULL) {
-				msg = "(error with no message)";
+			if (msg == nullptr) {
+				msg = "(unknown error)";
 			}
 
 			const char *errtype = luaX_status2str(status);
@@ -251,10 +251,10 @@ public:
 				msg = lua_tostring(L, err);
 			}
 			if (msg == nullptr) {
-				msg = "(error with no message)";
+				msg = "(unknown error)";
 			}
 
-			return luaL_error(L, "failed to initialise %s: %s", T::className, msg);
+			return luaL_error(L, "'%s' failed to initialise: %s", T::className, msg);
 		}
 
 		push(L, obj, true); // gc_T will delete this object

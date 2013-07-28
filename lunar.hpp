@@ -377,13 +377,10 @@ public:
 	}
 
 	static void rawsetfield(lua_State *L, int tindex, const char *key) { //> [-1,+0,e]
-		if (tindex < 0) {
-			tindex--;
-		}
-
+		int abs_tindex = lua_absindex(L, tindex);
 		lua_pushstring(L, key);                           // [-0,+1,e]
 		lua_insert(L, -2);  // swap value and key         // [-1,+1,-]
-		lua_rawset(L, tindex);                            // [-2,+0,e]
+		lua_rawset(L, abs_tindex);                            // [-2,+0,e]
 	}
 
 	/*! Create a weak table on top of stack */
@@ -397,14 +394,15 @@ public:
 
 	/*! Create table "name" within table at index tindex */
 	static void subtable(lua_State *L, int tindex, const char *name, const char *mode) { //> [-0,+1,e]
-		lua_getfield(L, tindex, name);                       // [-0,+1,e]
+		int abs_tindex = lua_absindex(L, tindex);
+		lua_getfield(L, abs_tindex, name);                       // [-0,+1,e]
 
 		if (lua_isnil(L, -1)) {                              // [-0,+0,-]
 			lua_pop(L, 1); // pop(nil)                         // [-1,+0,-]
 			lua_checkstack(L, 3);                              // [-0,+0,v]
 			weaktable(L, mode); // pushes a table              // [-0,+1,e]
 			lua_pushvalue(L, -1); // dup                       // [-0,+1,-]
-			rawsetfield(L, tindex, name); // t[name] = table   // [-1,+0,e]
+			rawsetfield(L, abs_tindex, name); // t[name] = table   // [-1,+0,e]
 		}
 	} // leaves table on stack
 

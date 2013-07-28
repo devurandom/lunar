@@ -202,17 +202,20 @@ public:
 
 	// get userdata from Lua stack and return pointer to T object
 	static T *check(lua_State *L, int narg, const char *argname = nullptr) {
-		return *static_cast<T**>(luaX_checkclass(L, narg, T::className, argname));
+		T **ud = static_cast<T**>(luaX_checkclass(L, narg, T::className, argname));
+		if (ud == nullptr) {
+			return nullptr;
+		}
+		return *ud;
 	}
 
 	// get userdata from Lua stack and return pointer to T object
 	static T *test(lua_State *L, int narg) {
-		T** obj = static_cast<T**>(luaX_testclass(L, narg, T::className));
-		if (obj == nullptr) {
+		T **ud = static_cast<T**>(luaX_testclass(L, narg, T::className));
+		if (ud == nullptr) {
 			return nullptr;
 		}
-
-		return *obj;
+		return *ud;
 	}
 
 private:
@@ -264,16 +267,28 @@ public:
 	// garbage collection metamethod
 	static int gc_T(lua_State *L) {
 		if (luaL_getmetafield(L, 1, "do not trash")) {
-			lua_pushvalue(L, 1);  // dup userdata
-			lua_gettable(L, -2);
-			if (!lua_isnil(L, -1)) return 0;  // do not delete object
+			lua_pushvalue(L, 1);
+			lua_rawget(L, -2);
+			if (!lua_isnil(L, -1)) {
+				return 0;
+			}
+			lua_pop(L, 2);
 		}
-		T *obj = *static_cast<T**>(lua_touserdata(L, 1));
-		if (obj) {
-			LunarWrapper::exit(obj, L);
-			// FIXME: Weird, sometimes we try to delete a pointer to somewhere *inside* the T object here...
-			delete obj;  // call destructor for T objects
+
+		T **ud = static_cast<T**>(lua_touserdata(L, 1));
+		if (ud == nullptr) {
+			return 0;
 		}
+
+		T *obj = *ud;
+		if (obj == nullptr) {
+			return 0;
+		}
+
+		LunarWrapper::exit(obj, L);
+		// FIXME: Weird, sometimes we try to delete a pointer to somewhere *inside* the T object here...
+		delete obj;
+
 		return 0;
 	}
 
@@ -351,7 +366,11 @@ public:
 
 	static int tostring_T (lua_State *L) {
 		char buff[32];
-		T *obj = *static_cast<T**>(lua_touserdata(L, 1));
+		T **ud = static_cast<T**>(lua_touserdata(L, 1));
+		if (ud == nullptr) {
+			return luaL_argerror(L, 1, "userdata expected");
+		}
+		T *obj = *ud;
 		sprintf(buff, "%p", obj);
 		lua_pushfstring(L, "%s (%s)", T::className, buff);
 		return 1;

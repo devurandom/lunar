@@ -88,7 +88,7 @@ public:
 
 		// hide metatable from Lua getmetatable()
 		lua_pushvalue(L, methods);                          // [-0,+1,-]
-		rawsetfield(L, metatable, "__metatable");           // [-1,+0,e]
+		rawsetfield(L, metatable, "_methodtable");           // [-1,+0,e]
 
 		lua_pushvalue(L, methods);                          // [-0,+1,-]
 		rawsetfield(L, metatable, "__index");               // [-1,+0,e]
@@ -287,7 +287,7 @@ public:
 
 		lua_pushliteral(L, "__index");                      // [-0,+1,e]
 		lua_rawget(L, class_metatable);                     // [-1,+1,-]
-		int class_methods = lua_gettop(L);
+		int class_index = lua_gettop(L);
 
 
 		lua_newtable(L);                                    // [-0,+1,e]
@@ -302,12 +302,12 @@ public:
 		int instance_methods_metatable = lua_gettop(L);
 
 		/* FIXME: HUGE HACK!!! */
-		if (lua_type(L, class_methods) == LUA_TFUNCTION) {
-			lua_pushliteral(L, "__metatable");
-			lua_rawget(L, class_metatable);
+		if (lua_type(L, class_index) == LUA_TFUNCTION) {
+			lua_pushliteral(L, "_methodtable");                 // [-0,+1,-]
+			lua_rawget(L, class_metatable);                     // [-1,+1,-]
 		}
 		else {
-			lua_pushvalue(L, class_methods);                    // [-0,+1,-]
+			lua_pushvalue(L, class_index);                    // [-0,+1,-]
 		}
 		rawsetfield(L, instance_methods_metatable, "__index");// [-1,+0,e]
 
@@ -329,11 +329,11 @@ public:
 		rawsetfield(L, instance_metatable, LUAX_STR_CLASS); // [-1,+0,e]
 
 		/* FIXME: HUGE HACK!!! */
-		if (lua_type(L, class_methods) == LUA_TFUNCTION) {
+		if (lua_type(L, class_index) == LUA_TFUNCTION) {
 			lua_pushvalue(L, instance_methods);                 // [-0,+1,-]
-			rawsetfield(L, instance_metatable, "__metatable");     // [-1,+0,e]
+			rawsetfield(L, instance_metatable, "_methodtable");     // [-1,+0,e]
 
-			lua_pushvalue(L, class_methods);                 // [-0,+1,-]
+			lua_pushvalue(L, class_index);                 // [-0,+1,-]
 			rawsetfield(L, instance_metatable, "__index");      // [-1,+0,e]
 		}
 		else {

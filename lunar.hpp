@@ -434,25 +434,25 @@ public:
 	static bool pushuserdata(lua_State *L, T *obj) {
 		lua_pushlightuserdata(L, obj);
 		lua_gettable(L, -2);     // table[obj]
-		if (lua_isnil(L, -1)) {
-			lua_pop(L, 1);         // drop nil
-			lua_checkstack(L, 3);
-
-			T **ud = static_cast<T**>(lua_newuserdata(L, sizeof(T*)));  // create new userdata
-			if (ud == nullptr) {
-				return luaL_error(L, "Failed to allocate '%s'", T::className);
-			}
-
-			*ud = obj;  // store pointer to object in userdata
-
-			lua_pushlightuserdata(L, obj);
-			lua_pushvalue(L, -2);  // dup ud
-			lua_settable(L, -4);   // table[obj] = ud
-
-			return true;
+		if (!lua_isnil(L, -1)) {
+			return false;
 		}
 
-		return false;
+		lua_pop(L, 1);         // drop nil
+		lua_checkstack(L, 3);
+
+		T **ud = static_cast<T**>(lua_newuserdata(L, sizeof(T*)));  // create new userdata
+		if (ud == nullptr) {
+			return luaL_error(L, "Failed to allocate '%s'", T::className);
+		}
+
+		*ud = obj;  // store pointer to object in userdata
+
+		lua_pushlightuserdata(L, obj);
+		lua_pushvalue(L, -2);  // dup ud
+		lua_settable(L, -4);   // table[obj] = ud
+
+		return true;
 	}
 
 };

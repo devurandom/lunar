@@ -315,6 +315,16 @@ public:
 		// FIXME: Weird, sometimes we try to delete a pointer to somewhere *inside* the T object here...
 		delete obj;
 
+		luaL_getmetatable(L, T::className); // [-0,+1,-]
+		if (lua_isnil(L, -1)) {
+			return luaL_error(L, "'%s' missing metatable", T::className);
+		}
+
+		lua_getfield(L, -1, "userdata"); // [-0,+1,e]
+		lua_pushlightuserdata(L, obj); // [-0,+1,-]
+		lua_pushnil(L); // [-0,+1,-]
+		lua_rawset(L, -3); // [-2,+0,e]
+
 		return 0;
 	}
 
@@ -432,9 +442,12 @@ public:
 	} // leaves table on stack
 
 	static bool pushuserdata(lua_State *L, T *obj) {
+		lua_getfield(L, -1, "userdata");
+
 		lua_pushlightuserdata(L, obj);
 		lua_gettable(L, -2);     // table[obj]
 		if (!lua_isnil(L, -1)) {
+			lua_replace(L, -2); // drop(table.userdata)
 			return false;
 		}
 
@@ -451,6 +464,8 @@ public:
 		lua_pushlightuserdata(L, obj);
 		lua_pushvalue(L, -2);  // dup ud
 		lua_settable(L, -4);   // table[obj] = ud
+
+		lua_replace(L, -2); // drop(table.userdata)
 
 		return true;
 	}

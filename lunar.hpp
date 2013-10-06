@@ -191,6 +191,7 @@ public:
 		}
 		int l_mt = lua_gettop(L);
 
+		/* Was this pointer pushed already? Then pushuserdata pushed the existing copy */
 		if (!pushuserdata(L, obj)) {
 			return 1;
 		}

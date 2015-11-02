@@ -31,53 +31,53 @@ struct LunarType {
 
 struct LunarWrapper {
 	template <typename T>
-	static auto prep_imp(T *o, lua_State *L, int)
-		-> decltype(o->prep(L), int()) {
-		return o->prep(L);
+	static auto oninit_imp(T *o, lua_State *L, int)
+		-> decltype(o->oninit(L), int()) {
+		return o->oninit(L);
 	}
 
 	template <typename T>
-	static int prep_imp(T *o, lua_State *L, long) {
+	static int oninit_imp(T *o, lua_State *L, long) {
 		return 0;
 	}
 
 	template <typename T>
-	static int prep(T *o, lua_State *L) {
-		return prep_imp(o, L, 0);
+	static int oninit(T *o, lua_State *L) {
+		return oninit_imp(o, L, 0);
 	}
 
 	template <typename T>
-	static auto init_imp(T *o, lua_State *L, int)
-		-> decltype(o->init(L), int()) {
-		return o->init(L);
+	static auto onpush_imp(T *o, lua_State *L, int)
+		-> decltype(o->onpush(L), int()) {
+		return o->onpush(L);
 	}
 
 	template <typename T>
-	static int init_imp(T *o, lua_State *L, long) {
+	static int onpush_imp(T *o, lua_State *L, long) {
 		return 0;
 	}
 
 	template <typename T>
-	static int init(T *o, lua_State *L) {
-		return init_imp(o, L, 0);
+	static int onpush(T *o, lua_State *L) {
+		return onpush_imp(o, L, 0);
 	}
 
 	template <typename T>
-	static auto exit_imp(T *o, lua_State *L, int)
-		-> decltype(o->exit(L), int()) {
-		return o->exit(L);
+	static auto ongc_imp(T *o, lua_State *L, int)
+		-> decltype(o->ongc(L), int()) {
+		return o->ongc(L);
 	}
 
 	template <typename T>
-	static auto exit_imp(T *o, lua_State *L, long)
+	static auto ongc_imp(T *o, lua_State *L, long)
 		-> decltype(int()) {
 		return 0;
 	}
 
 	template <typename T>
-	static auto exit(T *o, lua_State *L)
-		-> decltype(exit_imp(o, L, 0)) {
-		return exit_imp(o, L, 0);
+	static auto ongc(T *o, lua_State *L)
+		-> decltype(ongc_imp(o, L, 0)) {
+		return ongc_imp(o, L, 0);
 	}
 };
 
@@ -210,7 +210,7 @@ public:
 		lua_settop(L, l_ud);
 		lua_replace(L, l_mt);
 
-		int nresult = LunarWrapper::prep(obj, L);
+		int nresult = LunarWrapper::onpush(obj, L);
 		if (nresult != 0) {
 			const char *msg = nullptr;
 			int err = lua_gettop(L);
@@ -221,7 +221,7 @@ public:
 				msg = "(unknown error)";
 			}
 
-			return luaL_error(L, "'%s' failed to prepare: %s", T::className, msg);
+			return luaL_error(L, "'%s' failed to prepare for push: %s", T::className, msg);
 		}
 
 		return 1;
@@ -270,9 +270,9 @@ public:
 		T *obj = new T(L);  // call constructor for T objects
 
 		push(L, obj, true);
-		lua_insert(L, 1); // Push self below arguments for call to init()
+		lua_insert(L, 1); // Push self below arguments for call to oninit()
 
-		int nresult = LunarWrapper::init(obj, L);
+		int nresult = LunarWrapper::oninit(obj, L);
 		if (nresult != 0) {
 			const char *msg = nullptr;
 			int err = lua_gettop(L);
@@ -312,7 +312,7 @@ public:
 			return 0;
 		}
 
-		LunarWrapper::exit(obj, L);
+		LunarWrapper::ongc(obj, L);
 		// FIXME: Weird, sometimes we try to delete a pointer to somewhere *inside* the T object here...
 		delete obj;
 

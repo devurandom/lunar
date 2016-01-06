@@ -20,6 +20,7 @@ extern "C" {
 	const char class::className[] = #class; \
 	const typename LunarType<class>::Reg class::methods[] =
 
+
 template <typename T>
 struct LunarType {
 	typedef struct {
@@ -30,6 +31,22 @@ struct LunarType {
 
 
 struct LunarWrapper {
+	template <typename T>
+	static auto onregister_imp(lua_State *L, int)
+		-> decltype(T::onregister(L), int()) {
+		return T::onregister(L);
+	}
+
+	template <typename T>
+	static int onregister_imp(lua_State *L, long) {
+		return 0;
+	}
+
+	template <typename T>
+	static int onregister(lua_State *L) {
+		return onregister_imp<T>(L, 0);
+	}
+
 	template <typename T>
 	static auto oninit_imp(T *o, lua_State *L, int)
 		-> decltype(o->oninit(L), int()) {
@@ -140,6 +157,9 @@ public:
 		}
 
 		subtable(L, l_metatable, "userdata", "v"); // mt.userdata = {}
+
+		lua_settop(L, l_metatable);
+		LunarWrapper::onregister<T>(L);
 
 		lua_settop(L, l_module); // drop locals
 	}

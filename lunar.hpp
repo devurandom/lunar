@@ -96,7 +96,24 @@ struct LunarWrapper {
 		-> decltype(ongc_imp(o, L, 0)) {
 		return ongc_imp(o, L, 0);
 	}
+
+	template <typename T>
+	static auto onextend_imp(T *o, lua_State *L, int)
+		-> decltype(o->onextend(L), int()) {
+		return o->onextend(L);
+	}
+
+	template <typename T>
+	static int onextend_imp(T *o, lua_State *L, long) {
+		return 0;
+	}
+
+	template <typename T>
+	static int onextend(T *o, lua_State *L) {
+		return onextend_imp(o, L, 0);
+	}
 };
+
 
 template <typename T>
 class Lunar {
@@ -119,14 +136,10 @@ public:
 		lua_pushstring(L, T::className);                    // [-0,+1,-]
 		rawsetfield(L, l_metatable, LUAX_STR_TYPENAME);     // [-1,+0,e]
 
-		// hide metatable from Lua getmetatable()
-		lua_pushvalue(L, l_methods);                        // [-0,+1,-]
-		rawsetfield(L, l_metatable, "_methodtable");        // [-1,+0,e]
-
 		lua_pushvalue(L, l_methods);                        // [-0,+1,-]
 		rawsetfield(L, l_metatable, "__index");             // [-1,+0,e]
 
-		lua_pushcfunction(L, newindex_T);                   // [-0,+1,-]
+		lua_pushvalue(L, l_methods);                        // [-0,+1,-]
 		rawsetfield(L, l_metatable, "__newindex");          // [-1,+0,e]
 
 		lua_pushcfunction(L, tostring_T);                   // [-0,+1,-]
@@ -136,11 +149,16 @@ public:
 		rawsetfield(L, l_metatable, "__gc");                // [-1,+0,e]
 
 		lua_newtable(L); // $mt (metatable of method table)           // [-0,+1,e]
+		int l_methods_mt = lua_gettop(L);
+
 		lua_pushvalue(L, l_methods);                                  // [-0,+1,-]
 		lua_pushcclosure(L, new_T, 1);                                // [-1,+1,e]
 		lua_pushvalue(L, -1); // dup new_T function                   // [-0,+1,-]
-		rawsetfield(L, l_methods, "new"); // add new_T to method table // [-1,+0,e]
-		rawsetfield(L, -2, "__call"); // $mt.__call = new_T           // [-1,+0,e]
+		rawsetfield(L, l_methods, "new");                             // [-1,+0,e]
+		lua_pushcfunction(L, extend);                                 // [-0,+1,e]
+		rawsetfield(L, l_methods, "extend");                          // [-1,+0,e]
+
+		rawsetfield(L, l_methods_mt, "__call");                       // [-1,+0,e]
 		lua_setmetatable(L, l_methods);                               // [-1,+0,-]
 
 		// fill method table with methods from class T
@@ -265,11 +283,75 @@ public:
 		return *ud;
 	}
 
+	/* Detach an object from its class, allowing to override methods */
+	static int extend(lua_State *L) { //> [-0,+0,e]
+		const int self = lua_absindex(L, -1);
+
+		if (!lua_getmetatable(L, self)) {                         // [-0,+(1|0),-]
+			return luaL_error(L, "While extending: Expected '%s' to have a metatable", T::className);
+		}
+		int class_metatable = lua_gettop(L);
+
+		/* New metatable(self) */
+		lua_newtable(L);                                          // [-0,+1,e]
+		int self_metatable = lua_gettop(L);
+
+		/* Set connection to parent for LuaX type checks */
+		lua_pushvalue(L, class_metatable);                        // [-0,+1,-]
+		lua_setfield(L, self_metatable, LUAX_STR_CLASS);          // [-1,+0,e]
+
+		/* Clone class_metatable into instance_metatable */
+		lua_pushnil(L);                                           // [-0,+1,e]
+		while (lua_next(L, class_metatable) != 0) {               // [-1,+(2|0),e]
+			lua_pushvalue(L, -2);                                   // [-0,+1,-]
+			lua_insert(L, -2);                                      // [-1,+1,-]
+			lua_rawset(L, self_metatable);                          // [-2,+0,e]
+		}
+
+		/* New metatable(self).__index */
+		lua_newtable(L);                                          // [-0,+1,e]
+		int self_metatable_index = lua_gettop(L);
+
+		/* New metatable(metatable(self).__index) */
+		lua_newtable(L);                                          // [-0,+1,e]
+		int self_metatable_index_metatable = lua_gettop(L);
+
+		/* Set metatable(metatable(self).__index).__index */
+		lua_getfield(L, class_metatable, "__index");              // [-0,+1,e]
+		lua_setfield(L, self_metatable_index_metatable, "__index"); // [-1,+0,e]
+
+		/* Set metatable(metatable(self).__index) */
+		assert(lua_gettop(L) == self_metatable_index_metatable);
+		lua_setmetatable(L, self_metatable_index);                // [-1,+0,-]
+
+		/* Set metatable(self).__index */
+		assert(lua_gettop(L) == self_metatable_index);
+		lua_pushvalue(L, self_metatable_index);                   // [-0,+1,-]
+		lua_setfield(L, self_metatable, "__index");               // [-1,+0,e]
+
+		/* Set metatable(self).__newindex */
+		assert(lua_gettop(L) == self_metatable_index);
+		lua_setfield(L, self_metatable, "__newindex");            // [-1,+0,e]
+
+		/* Set metatable(self) */
+		assert(lua_gettop(L) == self_metatable);
+		lua_setmetatable(L, self);                                // [-1,+0,-]
+
+		/* Pop class metatable */
+		assert(lua_gettop(L) == class_metatable);
+		lua_pop(L, 1);                                            // [-1,+0,-]
+
+		T *obj = check(L, self, "self");
+		LunarWrapper::onextend(obj, L);
+
+		assert(self == lua_gettop(L));
+
+		return 1;
+	}
+
 private:
 	Lunar();  // hide default constructor
 
-/* FIXME HUGE HACK!!! */
-public:
 	// member function dispatcher
 	static int thunk(lua_State *L) {
 		// stack has userdata, followed by method args
@@ -349,77 +431,6 @@ public:
 		return 0;
 	}
 
-	/* Clone the class metatable to support overriding methods for one instance only */
-	static int newindex_T(lua_State *L) {
-		static const int l_instance = 1, l_key = 2, l_value = 3;
-
-		lua_getmetatable(L, l_instance);                    // [-0,+1,-]
-		int l_class_metatable = lua_gettop(L);
-
-		lua_pushliteral(L, "__index");                      // [-0,+1,e]
-		lua_rawget(L, l_class_metatable);                   // [-1,+1,-]
-		int l_class_index = lua_gettop(L);
-
-
-		lua_newtable(L);                                    // [-0,+1,e]
-		int l_instance_methods = lua_gettop(L);
-
-		lua_pushvalue(L, l_key);                            // [-0,+1,e]
-		lua_pushvalue(L, l_value);                          // [-0,+1,e]
-		lua_rawset(L, l_instance_methods);                  // [-2,+0,e]
-
-
-		lua_newtable(L);                                    // [-0,+1,e]
-		int l_instance_methods_metatable = lua_gettop(L);
-
-		/* FIXME: HUGE HACK!!! */
-		if (lua_type(L, l_class_index) == LUA_TFUNCTION) {
-			lua_pushliteral(L, "_methodtable");               // [-0,+1,-]
-			lua_rawget(L, l_class_metatable);                 // [-1,+1,-]
-		}
-		else {
-			lua_pushvalue(L, l_class_index);                  // [-0,+1,-]
-		}
-		rawsetfield(L, l_instance_methods_metatable, "__index"); // [-1,+0,e]
-
-		lua_setmetatable(L, l_instance_methods);            // [-1,+0,-]
-
-
-		lua_newtable(L);                                    // [-0,+1,e]
-		int l_instance_metatable = lua_gettop(L);
-
-		/* clone class metatable to preserve __add behaviour and similar */
-		lua_pushnil(L);                                     // [-0,+1,e]
-		while (lua_next(L, l_class_metatable) != 0) {       // [-1,+(2|0),e]
-			lua_pushvalue(L, -2);                             // [-0,+1,-]
-			lua_insert(L, -2);                                // [-1,+1,-]
-			lua_rawset(L, l_instance_metatable);              // [-2,+0,e]
-		}
-
-		lua_pushvalue(L, l_class_metatable);                // [-0,+1,-]
-		rawsetfield(L, l_instance_metatable, LUAX_STR_CLASS); // [-1,+0,e]
-
-		/* FIXME: HUGE HACK!!! */
-		if (lua_type(L, l_class_index) == LUA_TFUNCTION) {
-			lua_pushvalue(L, l_instance_methods);             // [-0,+1,-]
-			rawsetfield(L, l_instance_metatable, "_methodtable"); // [-1,+0,e]
-
-			lua_pushvalue(L, l_class_index);                  // [-0,+1,-]
-			rawsetfield(L, l_instance_metatable, "__index");  // [-1,+0,e]
-		}
-		else {
-			lua_pushvalue(L, l_instance_methods);             // [-0,+1,-]
-			rawsetfield(L, l_instance_metatable, "__index");  // [-1,+0,e]
-		}
-
-		lua_pushvalue(L, l_instance_methods);               // [-0,+1,-]
-		rawsetfield(L, l_instance_metatable, "__newindex"); // [-1,+0,e]
-
-		lua_setmetatable(L, l_instance);                    // [-1,+0,-]
-
-		return 0;
-	}
-
 	static int tostring_T(lua_State *L) {
 		char buff[32];
 		T **ud = static_cast<T**>(lua_touserdata(L, 1));
@@ -490,7 +501,6 @@ public:
 
 		return true;
 	}
-
 };
 
 #endif

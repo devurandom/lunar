@@ -86,45 +86,45 @@ class Lunar {
 public:
 	static void Register(lua_State *L) {
 		luaL_checktype(L, -1, LUA_TTABLE);
-		int module = lua_gettop(L);
+		int l_module = lua_gettop(L);
 
 		lua_newtable(L);                                    // [-0,+1,e]
-		int methods = lua_gettop(L);
+		int l_methods = lua_gettop(L);
 
 		luaL_newmetatable(L, T::className);                 // [-0,+1,e]
-		int metatable = lua_gettop(L);
+		int l_metatable = lua_gettop(L);
 
 		// store method table in module so that
 		// scripts can add functions written in Lua.
-		lua_pushvalue(L, methods);                          // [-0,+1,-]
-		rawsetfield(L, module, T::className);               // [-1,+0,e]
+		lua_pushvalue(L, l_methods);                        // [-0,+1,-]
+		rawsetfield(L, l_module, T::className);             // [-1,+0,e]
 
 		lua_pushstring(L, T::className);                    // [-0,+1,-]
-		rawsetfield(L, metatable, LUAX_STR_TYPENAME);       // [-1,+0,e]
+		rawsetfield(L, l_metatable, LUAX_STR_TYPENAME);     // [-1,+0,e]
 
 		// hide metatable from Lua getmetatable()
-		lua_pushvalue(L, methods);                          // [-0,+1,-]
-		rawsetfield(L, metatable, "_methodtable");           // [-1,+0,e]
+		lua_pushvalue(L, l_methods);                        // [-0,+1,-]
+		rawsetfield(L, l_metatable, "_methodtable");        // [-1,+0,e]
 
-		lua_pushvalue(L, methods);                          // [-0,+1,-]
-		rawsetfield(L, metatable, "__index");               // [-1,+0,e]
+		lua_pushvalue(L, l_methods);                        // [-0,+1,-]
+		rawsetfield(L, l_metatable, "__index");             // [-1,+0,e]
 
 		lua_pushcfunction(L, newindex_T);                   // [-0,+1,-]
-		rawsetfield(L, metatable, "__newindex");            // [-1,+0,e]
+		rawsetfield(L, l_metatable, "__newindex");          // [-1,+0,e]
 
 		lua_pushcfunction(L, tostring_T);                   // [-0,+1,-]
-		rawsetfield(L, metatable, "__tostring");            // [-1,+0,e]
+		rawsetfield(L, l_metatable, "__tostring");          // [-1,+0,e]
 
 		lua_pushcfunction(L, gc_T);                         // [-0,+1,-]
-		rawsetfield(L, metatable, "__gc");                  // [-1,+0,e]
+		rawsetfield(L, l_metatable, "__gc");                // [-1,+0,e]
 
 		lua_newtable(L); // $mt (metatable of method table)           // [-0,+1,e]
-		lua_pushvalue(L, methods);                                    // [-0,+1,-]
+		lua_pushvalue(L, l_methods);                                  // [-0,+1,-]
 		lua_pushcclosure(L, new_T, 1);                                // [-1,+1,e]
 		lua_pushvalue(L, -1); // dup new_T function                   // [-0,+1,-]
-		rawsetfield(L, methods, "new"); // add new_T to method table  // [-1,+0,e]
+		rawsetfield(L, l_methods, "new"); // add new_T to method table // [-1,+0,e]
 		rawsetfield(L, -2, "__call"); // $mt.__call = new_T           // [-1,+0,e]
-		lua_setmetatable(L, methods);                                 // [-1,+0,-]
+		lua_setmetatable(L, l_methods);                               // [-1,+0,-]
 
 		// fill method table with methods from class T
 		for (const typename LunarType<T>::Reg *l = T::methods; l->name; l++) {
@@ -132,36 +132,36 @@ public:
 			lua_pushcclosure(L, thunk, 1);                     // [-1,+1,e]
 
 			if (strncmp(l->name, "__", 2) == 0) {
-				rawsetfield(L, metatable, l->name);              // [-1,+0,e]
+				rawsetfield(L, l_metatable, l->name);            // [-1,+0,e]
 			}
 			else {
-				rawsetfield(L, methods, l->name);                // [-1,+0,e]
+				rawsetfield(L, l_methods, l->name);              // [-1,+0,e]
 			}
 		}
 
-		subtable(L, metatable, "userdata", "v"); // mt.userdata = {}
+		subtable(L, l_metatable, "userdata", "v"); // mt.userdata = {}
 
-		lua_settop(L, module); // drop locals
+		lua_settop(L, l_module); // drop locals
 	}
 
 	// call named lua method from userdata method table
 	static int call(lua_State *L, const char *method,
 					int nargs=0, int nresults=LUA_MULTRET, int errfunc=0)
 	{
-		int base = lua_gettop(L) - nargs;  // userdata index
-		if (!luaX_checkclass(L, base, T::className, "self")) {
-			lua_settop(L, base-1);           // drop userdata and args
+		int l_base = lua_gettop(L) - nargs;  // userdata index
+		if (!luaX_checkclass(L, l_base, T::className, "self")) {
+			lua_settop(L, l_base-1);           // drop userdata and args
 			lua_pushfstring(L, "not a valid %s userdata", T::className);
 			return -1;
 		}
 
-		lua_getfield(L, base, method);             // get method from userdata
+		lua_getfield(L, l_base, method);   // get method from userdata
 		if (lua_isnil(L, -1)) {            // no method?
-			lua_settop(L, base-1);           // drop userdata and args
+			lua_settop(L, l_base-1);         // drop userdata and args
 			lua_pushfstring(L, "%s missing method '%s'", T::className, method);
 			return -1;
 		}
-		lua_insert(L, base);               // put method under userdata, args
+		lua_insert(L, l_base);             // put method under userdata, args
 
 		int status = lua_pcall(L, 1+nargs, nresults, errfunc);  // call method
 		if (status != LUA_OK) {
@@ -172,11 +172,11 @@ public:
 
 			const char *errtype = luaX_status2str(status);
 			lua_pushfstring(L, "%s when calling %s:%s:\n%s\n", errtype, T::className, method, msg);
-			lua_remove(L, base);             // remove old message
+			lua_remove(L, l_base);           // remove old message
 			return -1;
 		}
 
-		return lua_gettop(L) - base + 1;   // number of results
+		return lua_gettop(L) - l_base + 1; // number of results
 	}
 
 	// push onto the Lua stack a userdata containing a pointer to T object
@@ -213,9 +213,9 @@ public:
 		int nresult = LunarWrapper::onpush(obj, L);
 		if (nresult != 0) {
 			const char *msg = nullptr;
-			int err = lua_gettop(L);
-			if (err >= 0) {
-				msg = lua_tostring(L, err);
+			int l_err = lua_gettop(L);
+			if (l_err >= 0) {
+				msg = lua_tostring(L, l_err);
 			}
 			if (msg == nullptr) {
 				msg = "(unknown error)";
@@ -275,9 +275,9 @@ public:
 		int nresult = LunarWrapper::oninit(obj, L);
 		if (nresult != 0) {
 			const char *msg = nullptr;
-			int err = lua_gettop(L);
-			if (err >= 0) {
-				msg = lua_tostring(L, err);
+			int l_err = lua_gettop(L);
+			if (l_err >= 0) {
+				msg = lua_tostring(L, l_err);
 			}
 			if (msg == nullptr) {
 				msg = "(unknown error)";
@@ -330,77 +330,77 @@ public:
 	}
 
 	/* Clone the class metatable to support overriding methods for one instance only */
-	static int newindex_T (lua_State *L) {
-		static const int instance = 1, key = 2, value = 3;
+	static int newindex_T(lua_State *L) {
+		static const int l_instance = 1, l_key = 2, l_value = 3;
 
-		lua_getmetatable(L, instance);                      // [-0,+1,-]
-		int class_metatable = lua_gettop(L);
+		lua_getmetatable(L, l_instance);                    // [-0,+1,-]
+		int l_class_metatable = lua_gettop(L);
 
 		lua_pushliteral(L, "__index");                      // [-0,+1,e]
-		lua_rawget(L, class_metatable);                     // [-1,+1,-]
-		int class_index = lua_gettop(L);
+		lua_rawget(L, l_class_metatable);                   // [-1,+1,-]
+		int l_class_index = lua_gettop(L);
 
 
 		lua_newtable(L);                                    // [-0,+1,e]
-		int instance_methods = lua_gettop(L);
+		int l_instance_methods = lua_gettop(L);
 
-		lua_pushvalue(L, key);                              // [-0,+1,e]
-		lua_pushvalue(L, value);                            // [-0,+1,e]
-		lua_rawset(L, instance_methods);                    // [-2,+0,e]
+		lua_pushvalue(L, l_key);                            // [-0,+1,e]
+		lua_pushvalue(L, l_value);                          // [-0,+1,e]
+		lua_rawset(L, l_instance_methods);                  // [-2,+0,e]
 
 
 		lua_newtable(L);                                    // [-0,+1,e]
-		int instance_methods_metatable = lua_gettop(L);
+		int l_instance_methods_metatable = lua_gettop(L);
 
 		/* FIXME: HUGE HACK!!! */
-		if (lua_type(L, class_index) == LUA_TFUNCTION) {
-			lua_pushliteral(L, "_methodtable");                 // [-0,+1,-]
-			lua_rawget(L, class_metatable);                     // [-1,+1,-]
+		if (lua_type(L, l_class_index) == LUA_TFUNCTION) {
+			lua_pushliteral(L, "_methodtable");               // [-0,+1,-]
+			lua_rawget(L, l_class_metatable);                 // [-1,+1,-]
 		}
 		else {
-			lua_pushvalue(L, class_index);                    // [-0,+1,-]
+			lua_pushvalue(L, l_class_index);                  // [-0,+1,-]
 		}
-		rawsetfield(L, instance_methods_metatable, "__index");// [-1,+0,e]
+		rawsetfield(L, l_instance_methods_metatable, "__index"); // [-1,+0,e]
 
-		lua_setmetatable(L, instance_methods);              // [-1,+0,-]
+		lua_setmetatable(L, l_instance_methods);            // [-1,+0,-]
 
 
 		lua_newtable(L);                                    // [-0,+1,e]
-		int instance_metatable = lua_gettop(L);
+		int l_instance_metatable = lua_gettop(L);
 
 		/* clone class metatable to preserve __add behaviour and similar */
 		lua_pushnil(L);                                     // [-0,+1,e]
-		while (lua_next(L, class_metatable) != 0) {         // [-1,+(2|0),e]
+		while (lua_next(L, l_class_metatable) != 0) {       // [-1,+(2|0),e]
 			lua_pushvalue(L, -2);                             // [-0,+1,-]
 			lua_insert(L, -2);                                // [-1,+1,-]
-			lua_rawset(L, instance_metatable);                // [-2,+0,e]
+			lua_rawset(L, l_instance_metatable);              // [-2,+0,e]
 		}
 
-		lua_pushvalue(L, class_metatable);                  // [-0,+1,-]
-		rawsetfield(L, instance_metatable, LUAX_STR_CLASS); // [-1,+0,e]
+		lua_pushvalue(L, l_class_metatable);                // [-0,+1,-]
+		rawsetfield(L, l_instance_metatable, LUAX_STR_CLASS); // [-1,+0,e]
 
 		/* FIXME: HUGE HACK!!! */
-		if (lua_type(L, class_index) == LUA_TFUNCTION) {
-			lua_pushvalue(L, instance_methods);                 // [-0,+1,-]
-			rawsetfield(L, instance_metatable, "_methodtable");     // [-1,+0,e]
+		if (lua_type(L, l_class_index) == LUA_TFUNCTION) {
+			lua_pushvalue(L, l_instance_methods);             // [-0,+1,-]
+			rawsetfield(L, l_instance_metatable, "_methodtable"); // [-1,+0,e]
 
-			lua_pushvalue(L, class_index);                 // [-0,+1,-]
-			rawsetfield(L, instance_metatable, "__index");      // [-1,+0,e]
+			lua_pushvalue(L, l_class_index);                  // [-0,+1,-]
+			rawsetfield(L, l_instance_metatable, "__index");  // [-1,+0,e]
 		}
 		else {
-			lua_pushvalue(L, instance_methods);                 // [-0,+1,-]
-			rawsetfield(L, instance_metatable, "__index");      // [-1,+0,e]
+			lua_pushvalue(L, l_instance_methods);             // [-0,+1,-]
+			rawsetfield(L, l_instance_metatable, "__index");  // [-1,+0,e]
 		}
 
-		lua_pushvalue(L, instance_methods);                 // [-0,+1,-]
-		rawsetfield(L, instance_metatable, "__newindex");   // [-1,+0,e]
+		lua_pushvalue(L, l_instance_methods);               // [-0,+1,-]
+		rawsetfield(L, l_instance_metatable, "__newindex"); // [-1,+0,e]
 
-		lua_setmetatable(L, instance);                      // [-1,+0,-]
+		lua_setmetatable(L, l_instance);                    // [-1,+0,-]
 
 		return 0;
 	}
 
-	static int tostring_T (lua_State *L) {
+	static int tostring_T(lua_State *L) {
 		char buff[32];
 		T **ud = static_cast<T**>(lua_touserdata(L, 1));
 		if (ud == nullptr) {
